@@ -3,7 +3,7 @@ module github.com/netcracker/qubership-core-lib-go-maas-segmentio/v3
 go 1.22
 
 require (
-	github.com/netcracker/qubership-core-lib-go-maas-client/v3 v3.0.0-20250625164240-a47faad5dd3b
+	github.com/netcracker/qubership-core-lib-go-maas-client/v3 v3.0.0
 	github.com/segmentio/kafka-go v0.4.47
 	github.com/stretchr/testify v1.10.0
 )

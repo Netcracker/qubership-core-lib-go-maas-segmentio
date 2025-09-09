@@ -7,7 +7,7 @@ toolchain go1.24.2
 require (
 	github.com/netcracker/qubership-core-lib-go-maas-client/v3 v3.0.1
 	github.com/segmentio/kafka-go v0.4.49
-	github.com/stretchr/testify v1.10.0
+	github.com/stretchr/testify v1.11.1
 )
 
 require (

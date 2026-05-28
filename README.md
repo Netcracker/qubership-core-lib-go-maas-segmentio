@@ -185,3 +185,4 @@ func clientWithOptions(topicAddress model.TopicAddress) {
 		}})
 }
 ~~~
+

@@ -1,6 +1,6 @@
 module github.com/netcracker/qubership-core-lib-go-maas-segmentio/v3
 
-go 1.26.3
+go 1.26.4
 
 require (
 	github.com/netcracker/qubership-core-lib-go-maas-client/v3 v3.5.0

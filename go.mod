@@ -3,7 +3,7 @@ module github.com/netcracker/qubership-core-lib-go-maas-segmentio/v3
 go 1.26.4
 
 require (
-	github.com/netcracker/qubership-core-lib-go-maas-client/v3 v3.5.1
+	github.com/netcracker/qubership-core-lib-go-maas-client/v3 v3.5.2
 	github.com/segmentio/kafka-go v0.4.51
 	github.com/stretchr/testify v1.11.1
 )
@@ -19,12 +19,13 @@ require (
 	github.com/knadh/koanf/maps v0.1.2 // indirect
 	github.com/knadh/koanf/parsers/yaml v1.1.0 // indirect
 	github.com/knadh/koanf/providers/env v1.1.0 // indirect
+	github.com/knadh/koanf/providers/env/v2 v2.0.0 // indirect
 	github.com/knadh/koanf/providers/file v1.2.1 // indirect
 	github.com/knadh/koanf/v2 v2.3.5 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
-	github.com/netcracker/qubership-core-lib-go-stomp-websocket/v3 v3.5.1 // indirect
-	github.com/netcracker/qubership-core-lib-go/v3 v3.11.1 // indirect
+	github.com/netcracker/qubership-core-lib-go-stomp-websocket/v3 v3.5.2 // indirect
+	github.com/netcracker/qubership-core-lib-go/v3 v3.11.2 // indirect
 	github.com/pierrec/lz4/v4 v4.1.15 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/viney-shih/go-lock v1.1.2 // indirect

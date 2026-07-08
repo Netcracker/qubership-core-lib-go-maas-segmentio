@@ -71,6 +71,8 @@ github.com/netcracker/qubership-core-lib-go-maas-client/v3 v3.5.3 h1:B5K3S/aohto
 github.com/netcracker/qubership-core-lib-go-maas-client/v3 v3.5.3/go.mod h1:nABh+dMX4ILnbS58WKCedqAN7n5LE076nJn5a8hmBKo=
 github.com/netcracker/qubership-core-lib-go-maas-client/v3 v3.5.4 h1:Rzie2yw3UDt/+ArTgU1bsAEHi9PKDCwovb3i6pCe9z0=
 github.com/netcracker/qubership-core-lib-go-maas-client/v3 v3.5.4/go.mod h1:bcJTsVcrKYO05Rr54MBYlovlOMCQEq5wxBSDz9kmD8A=
+github.com/netcracker/qubership-core-lib-go-maas-client/v3 v3.5.5 h1:LziEWzPMX62kadj+54g0keQpr2FiRGnVNYMs/uuGf60=
+github.com/netcracker/qubership-core-lib-go-maas-client/v3 v3.5.5/go.mod h1:keAYnGsTtJsob5KpoQo7Kbzzk+Dl+zc1WEy5DLaWwlI=
 github.com/netcracker/qubership-core-lib-go-stomp-websocket/v3 v3.5.0 h1:oUVIi1f4tLSsbXW4yd1DeNX/JiU2a7vA6tcFpu2SVmI=
 github.com/netcracker/qubership-core-lib-go-stomp-websocket/v3 v3.5.0/go.mod h1:hYGNDnfWPoYZbF6Bo0FP4yys2DXEK3WK3USu3SvFyFg=
 github.com/netcracker/qubership-core-lib-go-stomp-websocket/v3 v3.5.1 h1:jY4nFCgDZI865/J/uz635EFP1MxOTaC0NB0bNZszYms=
@@ -81,6 +83,8 @@ github.com/netcracker/qubership-core-lib-go-stomp-websocket/v3 v3.5.3 h1:lvjElIu
 github.com/netcracker/qubership-core-lib-go-stomp-websocket/v3 v3.5.3/go.mod h1:hx4clt2e+7J78BhbDKCIVZ1/qlHmF9OhqZFrYL0sTpk=
 github.com/netcracker/qubership-core-lib-go-stomp-websocket/v3 v3.5.4 h1:m6y1V0S3FInNGpzhBfCjaXZc5VN4hGZEHx0AXj4Ywyo=
 github.com/netcracker/qubership-core-lib-go-stomp-websocket/v3 v3.5.4/go.mod h1:S9lqkNUIR25B/G3uPSi45pkKTj2fBTpUlpQ8b9oabvQ=
+github.com/netcracker/qubership-core-lib-go-stomp-websocket/v3 v3.5.5 h1:z/O3m8hk1EraMgiYe++0w9uU2YiLnoQgeSOMZkplvo4=
+github.com/netcracker/qubership-core-lib-go-stomp-websocket/v3 v3.5.5/go.mod h1:+qhmCItvwDSgq/Xj0sLQud8npZJGnaPq0TNXD0gitFE=
 github.com/netcracker/qubership-core-lib-go/v3 v3.11.0 h1:x3b6ktH18718410hED7PYvcyKjHfIWwAG5B/9QSOK0Q=
 github.com/netcracker/qubership-core-lib-go/v3 v3.11.0/go.mod h1:HibQZBj/Qpk4eDt5CKqWEbv5pat2Ox3GF5HiW4tRLFM=
 github.com/netcracker/qubership-core-lib-go/v3 v3.11.1 h1:Pm/rNhiotO/Q/2onWsecHg4nQ478bd7NV0qSrSaPXlo=
@@ -91,6 +95,8 @@ github.com/netcracker/qubership-core-lib-go/v3 v3.12.0 h1:EBdb4Vc33dXSpnXDYijcs1
 github.com/netcracker/qubership-core-lib-go/v3 v3.12.0/go.mod h1:DJg7ebBI1IZqlc1PbqaCB1OFtX3+zULmtpHmDMCmeZw=
 github.com/netcracker/qubership-core-lib-go/v3 v3.13.0 h1:EVhHibms2G7hBybTC06+HSPYZDcFCxgv2HUziNAzxa8=
 github.com/netcracker/qubership-core-lib-go/v3 v3.13.0/go.mod h1:DJg7ebBI1IZqlc1PbqaCB1OFtX3+zULmtpHmDMCmeZw=
+github.com/netcracker/qubership-core-lib-go/v3 v3.13.1 h1:dq8ZT1mtvf9YLYjEupq9djxUu9vgVGNiZoWQnnsUMWc=
+github.com/netcracker/qubership-core-lib-go/v3 v3.13.1/go.mod h1:DJg7ebBI1IZqlc1PbqaCB1OFtX3+zULmtpHmDMCmeZw=
 github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58 h1:onHthvaw9LFnH4t2DcNVpwGmV9E1BkGknEliJkfwQj0=
 github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58/go.mod h1:DXv8WO4yhMYhSNPKjeNKa5WY9YCIEBRbNzFFPJbWO6Y=
 github.com/pierrec/lz4/v4 v4.1.15 h1:MO0/ucJhngq7299dKLwIMtgTfbkoSPF6AoMYDd8Q4q0=
@@ -101,6 +107,8 @@ github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZb
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/rabbitmq/amqp091-go v1.11.0 h1:HxIctVm9Gid/Vtn706necmZ7Wj6pgGI2eqplRbEY8O8=
 github.com/rabbitmq/amqp091-go v1.11.0/go.mod h1:Hy4jKW5kQART1u+JkDTF9YYOQUHXqMuhrgxOEeS7G4o=
+github.com/rabbitmq/amqp091-go v1.12.0 h1:V0v14Iqfs+MwHWihJt/nGS5Ulu0vw572b2Co3mwunkI=
+github.com/rabbitmq/amqp091-go v1.12.0/go.mod h1:Hy4jKW5kQART1u+JkDTF9YYOQUHXqMuhrgxOEeS7G4o=
 github.com/rogpeppe/go-internal v1.9.0 h1:73kH8U+JUqXU8lRuOHeVHaa/SZPifC7BkcraZVejAe8=
 github.com/rogpeppe/go-internal v1.9.0/go.mod h1:WtVeX8xhTBvf0smdhujwtBcq4Qrzq/fJaraNFVN+nFs=
 github.com/segmentio/kafka-go v0.4.51 h1:JgDPPG75tC1rWIS2Me6MwcvXJ6f49UQ4HjAOef71Hno=

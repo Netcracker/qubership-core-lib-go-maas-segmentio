@@ -186,3 +186,33 @@ func clientWithOptions(topicAddress model.TopicAddress) {
 }
 ~~~
 
+
+### 4. Write acknowledgements (`RequiredAcks`)
+
+`NewWriter` sets `RequiredAcks: kafka.RequireOne` explicitly.
+
+The kafka-go zero value is `RequireNone` (acks=0): the writer never reads a
+broker response, so a partition leader change silently drops in-flight messages
+while `WriteMessages` still reports success. `RequireOne` makes the leader
+acknowledge the write, which turns that silent loss into a visible, retryable
+error.
+
+`RequireAll` is deliberately not the default: it also pays the latency of the
+slowest in-sync replica and fails writes outright whenever the ISR drops below
+`min.insync.replicas` — which is exactly what a rolling node replacement does.
+
+Override it through `AlterWriter` when the trade-off should be different:
+
+~~~ go
+writer, err := segmentioHelper.NewWriter(topicAddress,
+    segmentioHelper.WriterOptions{AlterWriter: func(w *kafka.Writer) (*kafka.Writer, error) {
+        w.RequiredAcks = kafka.RequireAll // full durability
+        return w, nil
+    }})
+~~~
+
+> **Behaviour change.** Before this was made explicit, writers were built with
+> acks=0. Producers upgrading from an earlier version will start seeing write
+> errors that were previously swallowed, and acknowledgement latency where there
+> previously was none. The errors are not new — they were happening and being
+> lost.

@@ -29,17 +29,44 @@ func NewWriter(topic maasModel.TopicAddress, options ...WriterOptions) (*kafka.W
 	}
 	for _, opt := range options {
 		if opt.AlterTransport != nil {
-			if altered, aErr := opt.AlterTransport(transport); aErr != nil {
+			altered, aErr := opt.AlterTransport(transport)
+			if aErr != nil {
 				return nil, aErr
-			} else {
-				transport = altered
 			}
+			if altered == nil {
+				return nil, errors.New("AlterTransport returned a nil transport")
+			}
+			transport = altered
 		}
 	}
+	// RequireOne, not the kafka-go zero value. The zero value is RequireNone
+	// (acks=0): the writer never reads a broker response, so a partition leader
+	// change silently drops in-flight messages and WriteMessages still reports
+	// success. RequireOne makes the leader acknowledge the write, which is what
+	// turns a silent loss into a visible, retryable error.
+	//
+	// Deliberately not RequireAll: waiting for every in-sync replica also costs
+	// the latency of the slowest one and makes writes fail outright whenever the
+	// ISR drops below min.insync.replicas — which is exactly what a rolling node
+	// replacement does. Callers needing full durability can opt in via
+	// WriterOptions.AlterWriter.
 	writer := &kafka.Writer{
-		Addr:      kafka.TCP(servers...),
-		Transport: transport,
-		Topic:     topic.TopicName,
+		Addr:         kafka.TCP(servers...),
+		Transport:    transport,
+		Topic:        topic.TopicName,
+		RequiredAcks: kafka.RequireOne,
+	}
+	for _, opt := range options {
+		if opt.AlterWriter != nil {
+			altered, aErr := opt.AlterWriter(writer)
+			if aErr != nil {
+				return nil, aErr
+			}
+			if altered == nil {
+				return nil, errors.New("AlterWriter returned a nil writer")
+			}
+			writer = altered
+		}
 	}
 	return writer, nil
 }
@@ -51,11 +78,14 @@ func NewReaderConfig(topic maasModel.TopicAddress, groupId string, options ...Re
 	}
 	for _, opt := range options {
 		if opt.AlterDialer != nil {
-			if altered, aErr := opt.AlterDialer(dialer); aErr != nil {
+			altered, aErr := opt.AlterDialer(dialer)
+			if aErr != nil {
 				return nil, aErr
-			} else {
-				dialer = altered
 			}
+			if altered == nil {
+				return nil, errors.New("AlterDialer returned a nil dialer")
+			}
+			dialer = altered
 		}
 	}
 	return &kafka.ReaderConfig{
@@ -97,11 +127,14 @@ func NewClient(topic maasModel.TopicAddress, options ...ClientOptions) (*kafka.C
 	}
 	for _, opt := range options {
 		if opt.AlterTransport != nil {
-			if altered, aErr := opt.AlterTransport(transport); aErr != nil {
+			altered, aErr := opt.AlterTransport(transport)
+			if aErr != nil {
 				return nil, aErr
-			} else {
-				transport = altered
 			}
+			if altered == nil {
+				return nil, errors.New("AlterTransport returned a nil transport")
+			}
+			transport = altered
 		}
 	}
 	return &kafka.Client{
@@ -202,6 +235,10 @@ func getAvailableData(props *maasModel.TopicConnectionProperties) ([]string, *tl
 
 type WriterOptions struct {
 	AlterTransport func(transport *kafka.Transport) (*kafka.Transport, error)
+	// AlterWriter runs after the writer is built and lets callers override any
+	// field, including RequiredAcks — e.g. kafka.RequireAll for full durability
+	// or kafka.RequireNone to restore the pre-v3.6 fire-and-forget behaviour.
+	AlterWriter func(writer *kafka.Writer) (*kafka.Writer, error)
 }
 
 type ReaderOptions struct {

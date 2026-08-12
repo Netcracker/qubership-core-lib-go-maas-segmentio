@@ -28,47 +28,36 @@ func NewWriter(topic maasModel.TopicAddress, options ...WriterOptions) (*kafka.W
 		SASL: saslMechanism,
 	}
 	for _, opt := range options {
-		if opt.AlterTransport != nil {
-			altered, aErr := opt.AlterTransport(transport)
-			if aErr != nil {
-				return nil, aErr
-			}
-			if altered == nil {
-				return nil, errors.New("AlterTransport returned a nil transport")
-			}
-			transport = altered
+		if transport, err = applyAlter(transport, "AlterTransport", opt.AlterTransport); err != nil {
+			return nil, err
 		}
 	}
-	// RequireOne, not the kafka-go zero value. The zero value is RequireNone
-	// (acks=0): the writer never reads a broker response, so a partition leader
-	// change silently drops in-flight messages and WriteMessages still reports
-	// success. RequireOne makes the leader acknowledge the write, which is what
-	// turns a silent loss into a visible, retryable error.
-	//
-	// Deliberately not RequireAll: waiting for every in-sync replica also costs
-	// the latency of the slowest one and makes writes fail outright whenever the
-	// ISR drops below min.insync.replicas — which is exactly what a rolling node
-	// replacement does. Callers needing full durability can opt in via
-	// WriterOptions.AlterWriter.
-	writer := &kafka.Writer{
+	// RequireOne, not the kafka-go zero value: acks=0 never reads a broker
+	// response, so a partition leader change drops messages silently. Set
+	// RequiredAcks on the returned writer to choose a different trade-off.
+	return &kafka.Writer{
 		Addr:         kafka.TCP(servers...),
 		Transport:    transport,
 		Topic:        topic.TopicName,
 		RequiredAcks: kafka.RequireOne,
+	}, nil
+}
+
+// applyAlter runs a caller-supplied hook over v. A nil hook leaves v as it is;
+// a hook that returns nil without an error is a caller bug, and is reported
+// rather than passed on as a nil field.
+func applyAlter[T any](v *T, name string, alter func(*T) (*T, error)) (*T, error) {
+	if alter == nil {
+		return v, nil
 	}
-	for _, opt := range options {
-		if opt.AlterWriter != nil {
-			altered, aErr := opt.AlterWriter(writer)
-			if aErr != nil {
-				return nil, aErr
-			}
-			if altered == nil {
-				return nil, errors.New("AlterWriter returned a nil writer")
-			}
-			writer = altered
-		}
+	altered, err := alter(v)
+	if err != nil {
+		return nil, fmt.Errorf("%s failed: %w", name, err)
 	}
-	return writer, nil
+	if altered == nil {
+		return nil, fmt.Errorf("%s returned nil", name)
+	}
+	return altered, nil
 }
 
 func NewReaderConfig(topic maasModel.TopicAddress, groupId string, options ...ReaderOptions) (*kafka.ReaderConfig, error) {
@@ -77,15 +66,8 @@ func NewReaderConfig(topic maasModel.TopicAddress, groupId string, options ...Re
 		return nil, err
 	}
 	for _, opt := range options {
-		if opt.AlterDialer != nil {
-			altered, aErr := opt.AlterDialer(dialer)
-			if aErr != nil {
-				return nil, aErr
-			}
-			if altered == nil {
-				return nil, errors.New("AlterDialer returned a nil dialer")
-			}
-			dialer = altered
+		if dialer, err = applyAlter(dialer, "AlterDialer", opt.AlterDialer); err != nil {
+			return nil, err
 		}
 	}
 	return &kafka.ReaderConfig{
@@ -126,15 +108,8 @@ func NewClient(topic maasModel.TopicAddress, options ...ClientOptions) (*kafka.C
 		SASL: saslMechanism,
 	}
 	for _, opt := range options {
-		if opt.AlterTransport != nil {
-			altered, aErr := opt.AlterTransport(transport)
-			if aErr != nil {
-				return nil, aErr
-			}
-			if altered == nil {
-				return nil, errors.New("AlterTransport returned a nil transport")
-			}
-			transport = altered
+		if transport, err = applyAlter(transport, "AlterTransport", opt.AlterTransport); err != nil {
+			return nil, err
 		}
 	}
 	return &kafka.Client{
@@ -235,10 +210,6 @@ func getAvailableData(props *maasModel.TopicConnectionProperties) ([]string, *tl
 
 type WriterOptions struct {
 	AlterTransport func(transport *kafka.Transport) (*kafka.Transport, error)
-	// AlterWriter runs after the writer is built and lets callers override any
-	// field, including RequiredAcks — e.g. kafka.RequireAll for full durability
-	// or kafka.RequireNone to restore the pre-v3.6 fire-and-forget behaviour.
-	AlterWriter func(writer *kafka.Writer) (*kafka.Writer, error)
 }
 
 type ReaderOptions struct {

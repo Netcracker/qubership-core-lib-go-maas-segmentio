@@ -69,6 +69,8 @@ github.com/netcracker/qubership-core-lib-go-maas-client/v3 v3.5.9 h1:GgsoJycun57
 github.com/netcracker/qubership-core-lib-go-maas-client/v3 v3.5.9/go.mod h1:gE4OnsXQ5POVx++zOtES+Xv4njjI5czwO7bDW7Im+BU=
 github.com/netcracker/qubership-core-lib-go-maas-client/v3 v3.6.0 h1:qH4VXAPM9CftVBzSiAYWsjBS5il3/UQ6FEj7eXmHmv4=
 github.com/netcracker/qubership-core-lib-go-maas-client/v3 v3.6.0/go.mod h1:Zf5GerT7DbQzOFK5TZR9lfobrbEgZ0iJE0cIJf17I8c=
+github.com/netcracker/qubership-core-lib-go-maas-client/v3 v3.6.1 h1:Pyfj/pn9zCOIL7QP8tEsgsxeWFmJuNj+cbbqteK5Mac=
+github.com/netcracker/qubership-core-lib-go-maas-client/v3 v3.6.1/go.mod h1:Zf5GerT7DbQzOFK5TZR9lfobrbEgZ0iJE0cIJf17I8c=
 github.com/netcracker/qubership-core-lib-go-stomp-websocket/v3 v3.5.9 h1:hHLh9YCHyeD2ZA9cP2bIgZsV69iG+J/Px6wuYD0yGDQ=
 github.com/netcracker/qubership-core-lib-go-stomp-websocket/v3 v3.5.9/go.mod h1:n5C3gwSMH9CaY3XSuOgmaABouxG9t4VKOtzYZLJpTNU=
 github.com/netcracker/qubership-core-lib-go-stomp-websocket/v3 v3.6.0 h1:qAyJOjKEmMJ0ymN3KyF4fbKoglGeTpsPJPh3Srj4Yc4=

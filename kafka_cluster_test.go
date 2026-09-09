@@ -1,5 +1,3 @@
-//go:build failover
-
 package segmentio
 
 import (

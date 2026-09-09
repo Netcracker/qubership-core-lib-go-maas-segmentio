@@ -98,7 +98,9 @@ func writerFor(t *testing.T, address maasModel.TopicAddress) *kafka.Writer {
 		},
 	})
 	require.NoError(t, err)
-	writer.BatchTimeout = 100 * time.Millisecond
+	// these tests write one message at a time, and the batch window is a floor
+	// under every measurement, so it is cut well below what is being measured
+	writer.BatchTimeout = 5 * time.Millisecond
 	writer.ErrorLogger = kafka.LoggerFunc(t.Logf)
 	t.Cleanup(func() { writer.Close() })
 	return writer
@@ -290,6 +292,42 @@ func TestFailover_ProducerSurvivesPartitionLeaderLoss(t *testing.T) {
 
 	require.NoError(t, cluster.startBroker(ctx, leader))
 	require.NoError(t, cluster.awaitLeaders(ctx, topic, 1))
+}
+
+// Brokers are replaced one at a time, the way a rolling node update does it. A
+// producer writes throughout, and nothing it acknowledged may go missing.
+func TestFailover_ProducerSurvivesRollingBrokerRestart(t *testing.T) {
+	const topic = "failover-rolling-restart"
+	cluster, address := startFailoverCluster(t, topic, 1)
+	ctx := context.Background()
+
+	writer := writerFor(t, address)
+	writer.RequiredAcks = kafka.RequireAll
+
+	var acknowledged []string
+	next := 0
+	for broker := range failoverBrokers {
+		written, failures := produce(ctx, writer, next, next+3)
+		next += 3
+		acknowledged = append(acknowledged, written...)
+		require.Empty(t, failures, "the cluster was healthy before broker %d was stopped", broker)
+
+		require.NoError(t, cluster.stopBroker(ctx, broker))
+		require.NoError(t, cluster.awaitLeaders(ctx, topic, 1))
+
+		key := strconv.Itoa(next)
+		next++
+		t.Logf("broker %d is down, the writer recovered in %s", broker, awaitAccepted(t, writer, key))
+		acknowledged = append(acknowledged, key)
+
+		require.NoError(t, cluster.startBroker(ctx, broker))
+		require.NoError(t, cluster.awaitLeaders(ctx, topic, 1))
+	}
+
+	seen := consumeAll(t, address)
+	assert.Empty(t, lost(acknowledged, seen),
+		"a rolling restart must not lose an acknowledged message")
+	t.Logf("duplicates: %v", duplicated(seen))
 }
 
 // The group coordinator is lost while a reader is reading. Everything produced

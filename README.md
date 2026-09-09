@@ -231,9 +231,10 @@ A rolling node update takes brokers away one at a time, and the two sides of thi
 library recover on different scales. Neither is recreated for you: keep using the
 same writer or reader.
 
-A writer whose partition leader disappears finds the new one in around 120ms and
-loses nothing it acknowledged. Writes fail in between — retry them, because with
-`RequireOne` a failure means the message did not reach the log.
+A writer whose partition leader disappears finds the new one in tens of
+milliseconds — well under the batch window it waits on anyway — and loses nothing
+it acknowledged. Writes fail in between, so retry them: with `RequireOne` a
+failure means the message did not reach the log.
 
 A reader depends on the broker coordinating its group as well as on its partition
 leaders, since `NewReaderConfig` always builds a group reader. Losing the

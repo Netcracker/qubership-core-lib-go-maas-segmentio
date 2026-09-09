@@ -33,15 +33,21 @@ const (
 	shutdownTimeout = 10 * time.Second
 	// starterScript sets the advertised addresses before handing over to the image.
 	starterScript = "/usr/sbin/testcontainers_start.sh"
+	// controllerName is the network alias of the controller node.
+	controllerName = "controller-0"
 )
 
 // kafkaTestCluster is a Kafka cluster in KRaft mode, running in Docker. Broker
 // ports are fixed at creation, so a restarted broker keeps its address. They are
 // picked on the machine running the tests, so a remote daemon is not supported.
+//
+// The controller runs on its own node, so stopping brokers never touches the
+// quorum and they can be rotated one by one.
 type kafkaTestCluster struct {
-	instances []testcontainers.Container
-	host      string
-	hostPorts []int
+	instances  []testcontainers.Container
+	controller testcontainers.Container
+	host       string
+	hostPorts  []int
 	// boots counts the starts of each broker, so a wait for the ready line after
 	// a restart does not match the line from an earlier boot
 	boots []int
@@ -61,8 +67,8 @@ func useDockerHostFromEnv() string {
 	return url
 }
 
-// newKafkaCluster starts brokersNum brokers of the given Confluent image version.
-// The nodes carry both roles, so stopping one of three keeps the quorum.
+// newKafkaCluster starts brokersNum brokers of the given Confluent image version,
+// and one controller beside them.
 func newKafkaCluster(ctx context.Context, version string, brokersNum, replicationFactor int) (*kafkaTestCluster, error) {
 	if brokersNum <= 0 {
 		return nil, fmt.Errorf("brokersNum %d must be greater than 0", brokersNum)
@@ -79,17 +85,21 @@ func newKafkaCluster(ctx context.Context, version string, brokersNum, replicatio
 	if err != nil {
 		return nil, err
 	}
-	voters := make([]string, brokersNum)
-	for i := range voters {
-		voters[i] = fmt.Sprintf("%d@broker-%d:9094", i, i)
-	}
+	// the controller takes the node id after the brokers, so a broker id stays
+	// the index of its container
+	voters := fmt.Sprintf("%d@%s:9094", brokersNum, controllerName)
 
 	nw, err := network.New(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	instances, err := startBrokers(ctx, version, strings.Join(voters, ","), replicationFactor, host, hostPorts, nw)
+	// brokers need the controller to answer before they can register
+	controller, err := startController(ctx, version, voters, brokersNum, replicationFactor, nw)
+	if err != nil {
+		return nil, err
+	}
+	instances, err := startBrokers(ctx, version, voters, replicationFactor, host, hostPorts, nw)
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +111,8 @@ func newKafkaCluster(ctx context.Context, version string, brokersNum, replicatio
 		running[i] = true
 	}
 	cluster := &kafkaTestCluster{
-		instances: instances, host: host, hostPorts: hostPorts, boots: boots, running: running,
+		instances: instances, controller: controller,
+		host: host, hostPorts: hostPorts, boots: boots, running: running,
 	}
 	if err := cluster.awaitBrokersRegistered(ctx, brokersNum); err != nil {
 		return nil, err
@@ -166,11 +177,44 @@ func (cluster *kafkaTestCluster) startBroker(ctx context.Context, broker int) er
 	return nil
 }
 
-// stop terminates every broker.
+// stop terminates every node.
 func (cluster *kafkaTestCluster) stop(ctx context.Context) {
 	for _, broker := range cluster.instances {
 		_ = broker.Terminate(ctx)
 	}
+	if cluster.controller != nil {
+		_ = cluster.controller.Terminate(ctx)
+	}
+}
+
+// startController brings up the node holding the quorum. It advertises nothing:
+// the image refuses advertised listeners on a controller-only node, and no
+// client talks to it directly.
+func startController(ctx context.Context, version, voters string, nodeId, replicationFactor int,
+	nw *testcontainers.DockerNetwork) (testcontainers.Container, error) {
+	request := testcontainers.ContainerRequest{
+		Image: "confluentinc/cp-kafka:" + version,
+		// published only so that readiness can be taken from the port
+		ExposedPorts:   []string{"9094/tcp"},
+		Networks:       []string{nw.Name},
+		NetworkAliases: map[string][]string{nw.Name: {controllerName}},
+		Env: map[string]string{
+			"CLUSTER_ID":                                     clusterId,
+			"KAFKA_NODE_ID":                                  strconv.Itoa(nodeId),
+			"KAFKA_PROCESS_ROLES":                            "controller",
+			"KAFKA_CONTROLLER_QUORUM_VOTERS":                 voters,
+			"KAFKA_CONTROLLER_LISTENER_NAMES":                "CONTROLLER",
+			"KAFKA_LISTENERS":                                "CONTROLLER://0.0.0.0:9094",
+			"KAFKA_LISTENER_SECURITY_PROTOCOL_MAP":           "CONTROLLER:PLAINTEXT",
+			"KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR":         strconv.Itoa(replicationFactor),
+			"KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR": strconv.Itoa(replicationFactor),
+			"KAFKA_BROKER_SESSION_TIMEOUT_MS":                "6000",
+			"KAFKA_BROKER_HEARTBEAT_INTERVAL_MS":             "1000",
+		},
+		WaitingFor: wait.ForListeningPort("9094/tcp"),
+	}
+	return testcontainers.GenericContainer(ctx,
+		testcontainers.GenericContainerRequest{ContainerRequest: request, Started: true})
 }
 
 // startBrokers brings the brokers up in parallel: each waits for the quorum, so
@@ -250,8 +294,7 @@ exec /etc/confluent/docker/run
 		NetworkAliases: map[string][]string{nw.Name: {name}},
 		Env: map[string]string{
 			"CLUSTER_ID":                                     clusterId,
-			"KAFKA_LISTENERS":                                "PLAINTEXT://0.0.0.0:9093,BROKER://0.0.0.0:9092,CONTROLLER://0.0.0.0:9094",
-			"KAFKA_REST_BOOTSTRAP_SERVERS":                   "PLAINTEXT://0.0.0.0:9093,BROKER://0.0.0.0:9092,CONTROLLER://0.0.0.0:9094",
+			"KAFKA_LISTENERS":                                "PLAINTEXT://0.0.0.0:9093,BROKER://0.0.0.0:9092",
 			"KAFKA_LISTENER_SECURITY_PROTOCOL_MAP":           "BROKER:PLAINTEXT,PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT",
 			"KAFKA_CONTROLLER_QUORUM_VOTERS":                 voters,
 			"KAFKA_INTER_BROKER_LISTENER_NAME":               "BROKER",
@@ -263,7 +306,7 @@ exec /etc/confluent/docker/run
 			"KAFKA_LOG_FLUSH_INTERVAL_MESSAGES":              strconv.Itoa(math.MaxInt),
 			"KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS":         "0",
 			"KAFKA_NODE_ID":                                  strconv.Itoa(brokerId),
-			"KAFKA_PROCESS_ROLES":                            "broker,controller",
+			"KAFKA_PROCESS_ROLES":                            "broker",
 			"KAFKA_CONTROLLER_LISTENER_NAMES":                "CONTROLLER",
 			// how long a lost broker stays registered, and how long a replica
 			// that stopped fetching counts as in sync

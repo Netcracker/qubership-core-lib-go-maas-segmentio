@@ -1,16 +1,22 @@
 # Changelog
 
-## Unreleased
+All notable changes to this library are documented here.
 
-* `Behaviour changes`
-  - **`NewWriter` now sets `RequiredAcks: kafka.RequireOne`.** Previously the writer was built with
-    the kafka-go zero value, `RequireNone` (acks=0): the broker response was never read, so messages
-    lost during a partition leader change were reported as written. Producers will now see
-    acknowledgement latency they did not have before, and `WriteMessages` will return errors that
-    used to be swallowed. Callers with tight context deadlines may start seeing
-    `context.DeadlineExceeded`.
-    Set `writer.RequiredAcks` on the returned writer to choose a different trade-off; see
-    "Write acknowledgements" in the README.
-* `Features`
-  - `AlterTransport` and `AlterDialer` now report a hook that fails or returns nil, instead of
-    letting a nil value reach the writer, reader config or client.
+## [Unreleased]
+
+### Changed
+
+- `NewWriter` sets `RequiredAcks` to `RequireOne`. The writer used to be
+  built with the kafka-go zero value, `RequireNone` (acks=0), where the broker
+  response is never read, so messages lost during a partition leader change were
+  reported as written. Producers now see acknowledgement latency they did not
+  have before, and `WriteMessages` returns errors that used to be swallowed;
+  callers with tight context deadlines may start seeing
+  `context.DeadlineExceeded`. Set `RequiredAcks` on the returned writer to choose
+  a different trade-off, see "Write acknowledgements" in the README.
+
+### Fixed
+
+- `AlterTransport` and `AlterDialer` report a hook that fails or returns nil.
+  A nil result used to reach the writer, reader config or client, and the failure
+  surfaced later, at the first write.

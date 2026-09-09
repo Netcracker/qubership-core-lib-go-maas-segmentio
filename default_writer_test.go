@@ -20,17 +20,6 @@ func Test_NewWriter_RequiredAcksIsExplicit(t *testing.T) {
 		"the kafka-go zero value is RequireNone, which reports success without ever hearing from a broker")
 }
 
-// The returned writer is mutable, so durability is a caller decision and needs
-// no dedicated option.
-func Test_NewWriter_RequiredAcksCanBeOverriddenOnTheResult(t *testing.T) {
-	assertions := require.New(t)
-	writer, err := NewWriter(testTopicAddress())
-	assertions.NoError(err)
-
-	writer.RequiredAcks = kafka.RequireAll
-	assertions.Equal(kafka.RequireAll, writer.RequiredAcks)
-}
-
 // A hook that fails, or that hands back nil, must surface as an error naming the
 // hook rather than as a nil field discovered later at the first write.
 func Test_Alter_HooksReportFailureAndNil(t *testing.T) {

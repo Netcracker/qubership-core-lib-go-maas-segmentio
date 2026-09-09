@@ -194,7 +194,7 @@ func clientWithOptions(topicAddress model.TopicAddress) {
 
 ### 4. Write acknowledgements (`RequiredAcks`)
 
-`NewWriter` sets `RequiredAcks: kafka.RequireOne` explicitly.
+`NewWriter` sets `RequiredAcks: kafkago.RequireOne` explicitly.
 
 The kafka-go zero value is `RequireNone` (acks=0), where the writer never reads a
 broker response — a partition leader change then drops in-flight messages while

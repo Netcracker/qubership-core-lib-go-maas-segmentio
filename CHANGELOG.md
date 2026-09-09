@@ -6,14 +6,13 @@ All notable changes to this library are documented here.
 
 ### Changed
 
-- `NewWriter` sets `RequiredAcks` to `RequireOne`. The writer used to be
-  built with the kafka-go zero value, `RequireNone` (acks=0), where the broker
-  response is never read, so messages lost during a partition leader change were
-  reported as written. Producers now see acknowledgement latency they did not
-  have before, and `WriteMessages` returns errors that used to be swallowed;
-  callers with tight context deadlines may start seeing
-  `context.DeadlineExceeded`. Set `RequiredAcks` on the returned writer to choose
-  a different trade-off, see "Write acknowledgements" in the README.
+- `NewWriter` sets `RequiredAcks` to `RequireOne`, instead of leaving the
+  kafka-go zero value `RequireNone` (acks=0), where the broker response is never
+  read and messages lost during a partition leader change are reported as
+  written. Producers now see acknowledgement latency, and `WriteMessages`
+  returns errors that used to be swallowed; callers with tight context deadlines
+  may start seeing `context.DeadlineExceeded`. Set `RequiredAcks` on the returned
+  writer for a different trade-off, see "Write acknowledgements" in the README.
 
 ### Fixed
 

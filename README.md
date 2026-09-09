@@ -19,6 +19,7 @@ The provided Writer and Reader will receive all required configuration regarding
       * [WatchTenantTopics example:](#watchtenanttopics-example)
     * [3. Customize underlying segmentio structs:](#3-customize-underlying-segmentio-structs)
     * [4. Write acknowledgements (RequiredAcks)](#4-write-acknowledgements-requiredacks)
+    * [5. Behaviour on broker loss](#5-behaviour-on-broker-loss)
 <!-- TOC -->
 
 ### 1. Writer. To create kafka-go Write struct based on response from MaaS, the following code can be used:
@@ -222,3 +223,24 @@ writer.RequiredAcks = kafkago.RequireAll // full durability
 > **Behaviour change.** Earlier versions built writers with acks=0. After
 > upgrading, producers will see acknowledgement latency and write errors that
 > were previously not reported.
+
+
+### 5. Behaviour on broker loss
+
+A rolling node update takes brokers away one at a time, and the two sides of this
+library recover on different scales. Neither is recreated for you: keep using the
+same writer or reader.
+
+A writer whose partition leader disappears finds the new one in around 120ms and
+loses nothing it acknowledged. Writes fail in between — retry them, because with
+`RequireOne` a failure means the message did not reach the log.
+
+A reader depends on the broker coordinating its group as well as on its partition
+leaders, since `NewReaderConfig` always builds a group reader. Losing the
+coordinator costs about nine seconds, during which `FetchMessage` and
+`CommitMessages` return errors; keep calling them and the reader rejoins on its
+own. Where the last commit landed before the connection broke, the same loss
+costs under 30ms instead — the difference is one commit, not one setting.
+
+Delivery is at least once: the message whose commit did not land is delivered
+again. Make the handler safe to run twice, or deduplicate by key.

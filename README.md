@@ -18,6 +18,8 @@ The provided Writer and Reader will receive all required configuration regarding
       * [WatchTopicCreate example:](#watchtopiccreate-example)
       * [WatchTenantTopics example:](#watchtenanttopics-example)
     * [3. Customize underlying segmentio structs:](#3-customize-underlying-segmentio-structs)
+    * [4. Write acknowledgements (RequiredAcks)](#4-write-acknowledgements-requiredacks)
+    * [5. Behaviour on broker loss](#5-behaviour-on-broker-loss)
 <!-- TOC -->
 
 ### 1. Writer. To create kafka-go Write struct based on response from MaaS, the following code can be used:
@@ -25,6 +27,7 @@ The provided Writer and Reader will receive all required configuration regarding
   import (
 	"context"
 	"fmt"
+	"log"
 	"github.com/netcracker/qubership-core-lib-go/context-propagation/baseproviders"
 	"github.com/netcracker/qubership-core-lib-go/context-propagation/ctxmanager"
 	"github.com/netcracker/qubership-core-lib-go-maas-client/v3/classifier"
@@ -47,7 +50,10 @@ func producer() {
 		Value:   []byte("10USD"),
 		Headers: segmentioHelper.BuildHeaders(ctxData),
 	}
-	writer.WriteMessages(ctx, message)
+	// check the error: with acks enabled this is where a failed write surfaces
+	if err := writer.WriteMessages(ctx, message); err != nil {
+		log.Printf("failed to write message: %v", err)
+	}
 }
   ~~~
 
@@ -186,3 +192,56 @@ func clientWithOptions(topicAddress model.TopicAddress) {
 }
 ~~~
 
+
+### 4. Write acknowledgements (`RequiredAcks`)
+
+`NewWriter` sets `RequiredAcks: kafkago.RequireOne` explicitly.
+
+The kafka-go zero value is `RequireNone` (acks=0), where the writer never reads a
+broker response — a partition leader change then drops in-flight messages while
+`WriteMessages` still reports success. `RequireOne` makes that failure visible.
+
+Visible, not impossible: with acks=1 the leader can acknowledge a write and then
+fail before any replica has copied it, and that message is still lost. If the data
+must survive the loss of a broker, use `RequireAll` together with a
+`min.insync.replicas` above 1 on the topic.
+
+`RequireAll` is not the default because it also waits for the slowest in-sync
+replica and fails whenever the ISR drops below `min.insync.replicas`, which a
+rolling node replacement routinely causes.
+
+The writer is returned mutable, so a different trade-off needs no extra option:
+
+~~~ go
+writer, err := segmentioHelper.NewWriter(topicAddress)
+if err != nil {
+    return err
+}
+writer.RequiredAcks = kafkago.RequireAll // full durability
+~~~
+
+> **Behaviour change.** Earlier versions built writers with acks=0. After
+> upgrading, producers will see acknowledgement latency and write errors that
+> were previously not reported.
+
+
+### 5. Behaviour on broker loss
+
+A rolling node update takes brokers away one at a time, and the two sides of this
+library recover on different scales. Neither is recreated for you: keep using the
+same writer or reader.
+
+A writer whose partition leader disappears finds the new one in tens of
+milliseconds — well under the batch window it waits on anyway — and loses nothing
+it acknowledged. Writes fail in between, so retry them: with `RequireOne` a
+failure means the message did not reach the log.
+
+A reader depends on the broker coordinating its group as well as on its partition
+leaders, since `NewReaderConfig` always builds a group reader. Losing the
+coordinator costs about nine seconds, during which `FetchMessage` and
+`CommitMessages` return errors; keep calling them and the reader rejoins on its
+own. Where the last commit landed before the connection broke, the same loss
+costs under 30ms instead — the difference is one commit, not one setting.
+
+Delivery is at least once: the message whose commit did not land is delivered
+again. Make the handler safe to run twice, or deduplicate by key.

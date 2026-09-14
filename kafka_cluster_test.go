@@ -150,11 +150,24 @@ func (cluster *kafkaTestCluster) brokerAddress(broker int) string {
 	return fmt.Sprintf("%s:%d", cluster.host, cluster.hostPorts[broker])
 }
 
-// stopBroker shuts one broker down, leaving its data behind.
+// stopBroker drains one broker, leaving its data behind: the JVM is PID 1, so it
+// takes the signal and hands its partitions over before exiting.
 func (cluster *kafkaTestCluster) stopBroker(ctx context.Context, broker int) error {
 	timeout := shutdownTimeout
 	if err := cluster.instances[broker].Stop(ctx, &timeout); err != nil {
 		return fmt.Errorf("failed to stop broker %d: %w", broker, err)
+	}
+	cluster.running[broker] = false
+	return nil
+}
+
+// killBroker takes one broker away with no handover: SIGKILL to the JVM, which is
+// PID 1, so no shutdown hook runs and the controller only notices on the session
+// timeout. Stopping the container would not do it, because a stop signal reaches
+// the broker and it announces its departure before it dies.
+func (cluster *kafkaTestCluster) killBroker(ctx context.Context, broker int) error {
+	if _, _, err := cluster.instances[broker].Exec(ctx, []string{"kill", "-9", "1"}); err != nil {
+		return fmt.Errorf("failed to kill broker %d: %w", broker, err)
 	}
 	cluster.running[broker] = false
 	return nil

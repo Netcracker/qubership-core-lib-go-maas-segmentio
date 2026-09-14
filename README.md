@@ -228,20 +228,19 @@ writer.RequiredAcks = kafkago.RequireAll // full durability
 ### 5. Behaviour on broker loss
 
 A rolling node update takes brokers away one at a time, and the two sides of this
-library recover on different scales. Neither is recreated for you: keep using the
-same writer or reader.
+library recover differently. Neither is recreated for you: keep using the same
+writer or reader.
 
-A writer whose partition leader disappears finds the new one in tens of
-milliseconds — well under the batch window it waits on anyway — and loses nothing
-it acknowledged. Writes fail in between, so retry them: with `RequireOne` a
-failure means the message did not reach the log.
+A writer whose partition leader disappears finds the new one on its own and loses
+nothing it acknowledged. Writes fail in between, so retry them: with `RequireOne`
+a failure means the message did not reach the log.
 
 A reader depends on the broker coordinating its group as well as on its partition
-leaders, since `NewReaderConfig` always builds a group reader. Losing the
-coordinator costs about nine seconds, during which `FetchMessage` and
-`CommitMessages` return errors; keep calling them and the reader rejoins on its
-own. Where the last commit landed before the connection broke, the same loss
-costs under 30ms instead — the difference is one commit, not one setting.
+leaders, since `NewReaderConfig` always builds a group reader. While the group is
+finding its new coordinator, `FetchMessage` and `CommitMessages` return errors;
+keep calling them and the reader rejoins on its own. Expect seconds rather than
+milliseconds, and expect most of that to be the cluster settling on a new
+coordinator rather than the reader reconnecting to it.
 
-Delivery is at least once: the message whose commit did not land is delivered
-again. Make the handler safe to run twice, or deduplicate by key.
+Delivery is at least once: a message whose commit did not land is delivered again.
+Make the handler safe to run twice, or deduplicate by key.

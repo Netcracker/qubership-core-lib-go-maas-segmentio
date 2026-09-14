@@ -256,42 +256,61 @@ func duplicated(seen map[string]int) []string {
 	return repeated
 }
 
+// brokerFault is how a broker leaves. A node replacement drains it, so it hands
+// its partitions over before it goes; a node that dies does not, and the loss is
+// only noticed on the session timeout. Both are real events.
+type brokerFault struct {
+	name string
+	verb string
+	halt func(cluster *kafkaTestCluster, ctx context.Context, broker int) error
+}
+
+var brokerFaults = []brokerFault{
+	{name: "drained", verb: "draining", halt: (*kafkaTestCluster).stopBroker},
+	{name: "killed", verb: "killing", halt: (*kafkaTestCluster).killBroker},
+}
+
 // A partition leader is lost while a producer is writing. The writer has to find
 // the new leader on its own, and what it acknowledged must still be readable.
 func TestFailover_ProducerSurvivesPartitionLeaderLoss(t *testing.T) {
-	const topic = "failover-leader-loss"
-	cluster, address := startFailoverCluster(t, topic, 1)
-	ctx := context.Background()
+	for _, fault := range brokerFaults {
+		t.Run(fault.name, func(t *testing.T) {
+			const topic = "failover-leader-loss"
+			cluster, address := startFailoverCluster(t, topic, 1)
+			ctx := context.Background()
 
-	writer := writerFor(t, address)
-	writer.RequiredAcks = kafka.RequireAll
+			writer := writerFor(t, address)
+			writer.RequiredAcks = kafka.RequireAll
 
-	t.Log("before producing:\n" + cluster.describe(ctx, topic))
-	beforeLoss, failures := produce(ctx, writer, 0, 10)
-	require.Empty(t, failures, "the cluster was healthy, nothing should have failed")
+			t.Log("before producing:\n" + cluster.describe(ctx, topic))
+			beforeLoss, failures := produce(ctx, writer, 0, 10)
+			require.Empty(t, failures, "the cluster was healthy, nothing should have failed")
 
-	leaders, err := cluster.partitionLeaders(ctx, topic)
-	require.NoError(t, err)
-	leader := leaders[0]
-	t.Logf("stopping broker %d, which leads partition 0", leader)
-	require.NoError(t, cluster.stopBroker(ctx, leader))
-	require.NoError(t, cluster.awaitLeaders(ctx, topic, 1))
+			leaders, err := cluster.partitionLeaders(ctx, topic)
+			require.NoError(t, err)
+			leader := leaders[0]
+			t.Logf("%s broker %d, which leads partition 0", fault.verb, leader)
+			// from the fault, not from the election: the wait below is the cluster
+			// noticing the loss, which an application pays for as well
+			faultAt := time.Now()
+			require.NoError(t, fault.halt(cluster, ctx, leader))
+			require.NoError(t, cluster.awaitLeaders(ctx, topic, 1))
 
-	recovery := awaitAccepted(t, writer, "10")
-	t.Logf("the writer found the new leader in %s", recovery)
-	afterLoss, failures := produce(ctx, writer, 11, 20)
-	assert.Empty(t, failures, "writes kept failing after the writer had recovered")
+			recovery := awaitAccepted(t, writer, "10")
+			t.Logf("broker %s: the writer found the new leader in %s, %s after the fault",
+				fault.name, recovery, time.Since(faultAt).Round(time.Millisecond))
+			afterLoss, failures := produce(ctx, writer, 11, 20)
+			assert.Empty(t, failures, "writes kept failing after the writer had recovered")
 
-	acknowledged := append(beforeLoss, "10")
-	acknowledged = append(acknowledged, afterLoss...)
-	seen := consumeAll(t, address)
-	assert.Empty(t, lost(acknowledged, seen),
-		"acks=all must not lose an acknowledged message when the leader goes")
-	// a write rejected on a timeout may still have been appended
-	t.Logf("duplicates: %v", duplicated(seen))
-
-	require.NoError(t, cluster.startBroker(ctx, leader))
-	require.NoError(t, cluster.awaitLeaders(ctx, topic, 1))
+			acknowledged := append(beforeLoss, "10")
+			acknowledged = append(acknowledged, afterLoss...)
+			seen := consumeAll(t, address)
+			assert.Empty(t, lost(acknowledged, seen),
+				"acks=all must not lose an acknowledged message when the leader goes")
+			// a write rejected on a timeout may still have been appended
+			t.Logf("duplicates: %v", duplicated(seen))
+		})
+	}
 }
 
 // Brokers are replaced one at a time, the way a rolling node update does it. A
@@ -333,51 +352,54 @@ func TestFailover_ProducerSurvivesRollingBrokerRestart(t *testing.T) {
 // The group coordinator is lost while a reader is reading. Everything produced
 // has to arrive and committing has to work again, without rebuilding the reader.
 func TestFailover_ReaderSurvivesCoordinatorLoss(t *testing.T) {
-	const topic = "failover-coordinator-loss"
-	cluster, address := startFailoverCluster(t, topic, 1)
-	ctx := context.Background()
+	for _, fault := range brokerFaults {
+		t.Run(fault.name, func(t *testing.T) {
+			const topic = "failover-coordinator-loss"
+			cluster, address := startFailoverCluster(t, topic, 1)
+			ctx := context.Background()
 
-	writer := writerFor(t, address)
-	writer.RequiredAcks = kafka.RequireAll
-	beforeLoss, failures := produce(ctx, writer, 0, 5)
-	require.Empty(t, failures, "the cluster was healthy, nothing should have failed")
+			writer := writerFor(t, address)
+			writer.RequiredAcks = kafka.RequireAll
+			beforeLoss, failures := produce(ctx, writer, 0, 5)
+			require.Empty(t, failures, "the cluster was healthy, nothing should have failed")
 
-	reader := readerFor(t, address, "coordinator-loss-reader")
-	seen := map[string]bool{}
-	for range beforeLoss {
-		message := fetchWithRecovery(t, reader, readerRecoveryAllowance)
-		require.NoError(t, reader.CommitMessages(ctx, message))
-		seen[string(message.Key)] = true
+			reader := readerFor(t, address, "coordinator-loss-reader")
+			seen := map[string]bool{}
+			for range beforeLoss {
+				message := fetchWithRecovery(t, reader, readerRecoveryAllowance)
+				require.NoError(t, reader.CommitMessages(ctx, message))
+				seen[string(message.Key)] = true
+			}
+			require.Len(t, seen, len(beforeLoss), "the messages produced before the loss must all arrive")
+
+			// the offsets topic is created by the first commit, so the coordinator is
+			// only known at this point
+			leaders, err := cluster.partitionLeaders(ctx, offsetsTopic)
+			require.NoError(t, err)
+			coordinator := leaders[0]
+			t.Logf("%s broker %d, which coordinates the group", fault.verb, coordinator)
+			faultAt := time.Now()
+			require.NoError(t, fault.halt(cluster, ctx, coordinator))
+			require.NoError(t, cluster.awaitLeaders(ctx, topic, 1))
+
+			afterLoss, failures := produce(ctx, writer, 5, 10)
+			assert.Empty(t, failures, "producing has to survive the loss as well")
+
+			// delivery is at least once: an uncommitted offset is read again, so the set
+			// of keys is the measure here rather than the count of messages
+			expected := len(beforeLoss) + len(afterLoss)
+			start := time.Now()
+			delivered := 0
+			for len(seen) < expected && time.Since(start) < readerRecoveryAllowance {
+				message := fetchWithRecovery(t, reader, readerRecoveryAllowance)
+				commitWithRecovery(t, reader, message, readerRecoveryAllowance)
+				seen[string(message.Key)] = true
+				delivered++
+			}
+			t.Logf("coordinator %s: the reader delivered %d messages, %d of them new, in %s, %s after the fault",
+				fault.name, delivered, len(seen)-len(beforeLoss),
+				time.Since(start).Round(time.Millisecond), time.Since(faultAt).Round(time.Millisecond))
+			assert.Len(t, seen, expected, "losing the coordinator must not lose a message")
+		})
 	}
-	require.Len(t, seen, len(beforeLoss), "the messages produced before the loss must all arrive")
-
-	// the offsets topic is created by the first commit, so the coordinator is
-	// only known at this point
-	leaders, err := cluster.partitionLeaders(ctx, offsetsTopic)
-	require.NoError(t, err)
-	coordinator := leaders[0]
-	t.Logf("stopping broker %d, which coordinates the group", coordinator)
-	require.NoError(t, cluster.stopBroker(ctx, coordinator))
-	require.NoError(t, cluster.awaitLeaders(ctx, topic, 1))
-
-	afterLoss, failures := produce(ctx, writer, 5, 10)
-	assert.Empty(t, failures, "producing has to survive the loss as well")
-
-	// delivery is at least once: an uncommitted offset is read again, so the set
-	// of keys is the measure here rather than the count of messages
-	expected := len(beforeLoss) + len(afterLoss)
-	start := time.Now()
-	delivered := 0
-	for len(seen) < expected && time.Since(start) < readerRecoveryAllowance {
-		message := fetchWithRecovery(t, reader, readerRecoveryAllowance)
-		commitWithRecovery(t, reader, message, readerRecoveryAllowance)
-		seen[string(message.Key)] = true
-		delivered++
-	}
-	t.Logf("the reader delivered %d messages, %d of them new, in %s",
-		delivered, len(seen)-len(beforeLoss), time.Since(start).Round(time.Millisecond))
-	assert.Len(t, seen, expected, "losing the coordinator must not lose a message")
-
-	require.NoError(t, cluster.startBroker(ctx, coordinator))
-	require.NoError(t, cluster.awaitLeaders(ctx, topic, 1))
 }

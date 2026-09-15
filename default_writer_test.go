@@ -9,15 +9,24 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Writes must wait for at least one broker acknowledgement. With acks=0 the
-// writer never reads a broker response, so a partition leader change drops
-// in-flight messages while WriteMessages still reports success.
-func Test_NewWriter_RequiredAcksIsExplicit(t *testing.T) {
+// The default is left where kafka-go puts it, so an upgrade changes nothing for a
+// writer built without options.
+func Test_NewWriter_DefaultAcksAreUnchanged(t *testing.T) {
 	assertions := require.New(t)
 	writer, err := NewWriter(testTopicAddress())
 	assertions.NoError(err)
-	assertions.Equal(kafka.RequireOne, writer.RequiredAcks,
-		"the kafka-go zero value is RequireNone, which reports success without ever hearing from a broker")
+	assertions.Equal(kafka.RequireNone, writer.RequiredAcks)
+}
+
+// And the trade-off is expressible at construction, so a service that builds its
+// writers in a factory does not have to assign to the returned value.
+func Test_NewWriter_RequiredAcksOptionIsApplied(t *testing.T) {
+	assertions := require.New(t)
+	for _, acks := range []kafka.RequiredAcks{kafka.RequireOne, kafka.RequireAll} {
+		writer, err := NewWriter(testTopicAddress(), WriterOptions{RequiredAcks: &acks})
+		assertions.NoError(err)
+		assertions.Equal(acks, writer.RequiredAcks)
+	}
 }
 
 // A hook that fails, or that hands back nil, must surface as an error naming the

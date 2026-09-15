@@ -195,34 +195,37 @@ func clientWithOptions(topicAddress model.TopicAddress) {
 
 ### 4. Write acknowledgements (`RequiredAcks`)
 
-`NewWriter` sets `RequiredAcks: kafkago.RequireOne` explicitly.
+**A writer built without options keeps the kafka-go default, `RequireNone` (acks=0),
+and that default loses data during a leader change.** The writer never reads a broker
+response, so `WriteMessages` returns success for messages the old leader never
+committed and the new one never received. Nothing surfaces: not an error, not a
+retry, not a metric.
 
-The kafka-go zero value is `RequireNone` (acks=0), where the writer never reads a
-broker response — a partition leader change then drops in-flight messages while
-`WriteMessages` still reports success. `RequireOne` makes that failure visible.
-
-Visible, not impossible: with acks=1 the leader can acknowledge a write and then
-fail before any replica has copied it, and that message is still lost. If the data
-must survive the loss of a broker, use `RequireAll` together with a
-`min.insync.replicas` above 1 on the topic.
-
-`RequireAll` is not the default because it also waits for the slowest in-sync
-replica and fails whenever the ISR drops below `min.insync.replicas`, which a
-rolling node replacement routinely causes.
-
-The writer is returned mutable, so a different trade-off needs no extra option:
+Decide deliberately, at construction:
 
 ~~~ go
-writer, err := segmentioHelper.NewWriter(topicAddress)
-if err != nil {
-    return err
-}
-writer.RequiredAcks = kafkago.RequireAll // full durability
+acks := kafkago.RequireOne
+writer, err := segmentioHelper.NewWriter(topicAddress,
+    segmentioHelper.WriterOptions{RequiredAcks: &acks})
 ~~~
 
-> **Behaviour change.** Earlier versions built writers with acks=0. After
-> upgrading, producers will see acknowledgement latency and write errors that
-> were previously not reported.
+| | What a write waits for | What a leader change costs |
+|---|---|---|
+| `RequireNone` | nothing | acknowledged messages are lost silently |
+| `RequireOne` | the leader's own log | a write that fails is visible, so it can be retried; a write acknowledged by a leader that then dies before a replica copied it is still lost |
+| `RequireAll` | every in-sync replica | nothing acknowledged is lost, with `min.insync.replicas` above 1 |
+
+`RequireAll` is the safe end and it is not free: it waits for the slowest in-sync
+replica, and it fails whenever the ISR drops below `min.insync.replicas` — which a
+rolling node replacement routinely causes. `RequireOne` is the usual middle ground.
+
+`RequireNone` is a legitimate choice for telemetry and metrics, where loss is
+acceptable and latency is not. It is the wrong choice for anything a reader is
+expected to reconcile against.
+
+The writer is also returned mutable, so `writer.RequiredAcks` can be assigned after
+the fact; the option exists so that a service building writers in a factory can make
+the choice in one place.
 
 
 ### 5. Behaviour on broker loss

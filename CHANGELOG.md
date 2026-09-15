@@ -4,15 +4,15 @@ All notable changes to this library are documented here.
 
 ## [Unreleased]
 
-### Changed
+### Added
 
-- `NewWriter` sets `RequiredAcks` to `RequireOne`, instead of leaving the
-  kafka-go zero value `RequireNone` (acks=0), where the broker response is never
-  read and messages lost during a partition leader change are reported as
-  written. Producers now see acknowledgement latency, and `WriteMessages`
-  returns errors that used to be swallowed; callers with tight context deadlines
-  may start seeing `context.DeadlineExceeded`. Set `RequiredAcks` on the returned
-  writer for a different trade-off, see "Write acknowledgements" in the README.
+- `WriterOptions.RequiredAcks`, so the acknowledgement trade-off can be chosen
+  where the writer is built rather than assigned to the writer afterwards. Left
+  nil the default is unchanged: kafka-go's `RequireNone` (acks=0), where the
+  broker response is never read and messages lost during a partition leader
+  change are reported as written. That is the right choice for telemetry and the
+  wrong one for anything a reader reconciles against — see "Write
+  acknowledgements" in the README, which now states what each level costs.
 
 ### Fixed
 

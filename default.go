@@ -32,15 +32,17 @@ func NewWriter(topic maasModel.TopicAddress, options ...WriterOptions) (*kafka.W
 			return nil, err
 		}
 	}
-	// RequireOne, not the kafka-go zero value: acks=0 never reads a broker
-	// response, so a partition leader change drops messages silently. Set
-	// RequiredAcks on the returned writer to choose a different trade-off.
-	return &kafka.Writer{
-		Addr:         kafka.TCP(servers...),
-		Transport:    transport,
-		Topic:        topic.TopicName,
-		RequiredAcks: kafka.RequireOne,
-	}, nil
+	writer := &kafka.Writer{
+		Addr:      kafka.TCP(servers...),
+		Transport: transport,
+		Topic:     topic.TopicName,
+	}
+	for _, opt := range options {
+		if opt.RequiredAcks != nil {
+			writer.RequiredAcks = *opt.RequiredAcks
+		}
+	}
+	return writer, nil
 }
 
 // applyAlter runs a caller-supplied hook over v. A nil hook leaves v as it is;
@@ -210,6 +212,12 @@ func getAvailableData(props *maasModel.TopicConnectionProperties) ([]string, *tl
 
 type WriterOptions struct {
 	AlterTransport func(transport *kafka.Transport) (*kafka.Transport, error)
+	// RequiredAcks chooses how much of the cluster has to confirm a write. Left nil it
+	// stays at the kafka-go default, RequireNone: the writer never reads a broker
+	// response, so WriteMessages reports success for messages a partition leader change
+	// then drops. RequireOne makes that failure visible, RequireAll also survives the
+	// loss of the leader that acknowledged it. See "Write acknowledgements" in README.
+	RequiredAcks *kafka.RequiredAcks
 }
 
 type ReaderOptions struct {

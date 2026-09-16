@@ -4,6 +4,8 @@ All notable changes to this library are documented here.
 
 ## [Unreleased]
 
+## [3.7.0] - 2026-09-17
+
 ### Added
 
 - `WriterOptions.RequiredAcks`, so the acknowledgement trade-off can be chosen

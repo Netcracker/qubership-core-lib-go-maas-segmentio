@@ -28,12 +28,8 @@ func NewWriter(topic maasModel.TopicAddress, options ...WriterOptions) (*kafka.W
 		SASL: saslMechanism,
 	}
 	for _, opt := range options {
-		if opt.AlterTransport != nil {
-			if altered, aErr := opt.AlterTransport(transport); aErr != nil {
-				return nil, aErr
-			} else {
-				transport = altered
-			}
+		if transport, err = applyAlter(transport, "AlterTransport", opt.AlterTransport); err != nil {
+			return nil, err
 		}
 	}
 	writer := &kafka.Writer{
@@ -41,7 +37,29 @@ func NewWriter(topic maasModel.TopicAddress, options ...WriterOptions) (*kafka.W
 		Transport: transport,
 		Topic:     topic.TopicName,
 	}
+	for _, opt := range options {
+		if opt.RequiredAcks != nil {
+			writer.RequiredAcks = *opt.RequiredAcks
+		}
+	}
 	return writer, nil
+}
+
+// applyAlter runs a caller-supplied hook over v. A nil hook leaves v as it is;
+// a hook that returns nil without an error is a caller bug, and is reported
+// rather than passed on as a nil field.
+func applyAlter[T any](v *T, name string, alter func(*T) (*T, error)) (*T, error) {
+	if alter == nil {
+		return v, nil
+	}
+	altered, err := alter(v)
+	if err != nil {
+		return nil, fmt.Errorf("%s failed: %w", name, err)
+	}
+	if altered == nil {
+		return nil, fmt.Errorf("%s returned nil", name)
+	}
+	return altered, nil
 }
 
 func NewReaderConfig(topic maasModel.TopicAddress, groupId string, options ...ReaderOptions) (*kafka.ReaderConfig, error) {
@@ -50,12 +68,8 @@ func NewReaderConfig(topic maasModel.TopicAddress, groupId string, options ...Re
 		return nil, err
 	}
 	for _, opt := range options {
-		if opt.AlterDialer != nil {
-			if altered, aErr := opt.AlterDialer(dialer); aErr != nil {
-				return nil, aErr
-			} else {
-				dialer = altered
-			}
+		if dialer, err = applyAlter(dialer, "AlterDialer", opt.AlterDialer); err != nil {
+			return nil, err
 		}
 	}
 	return &kafka.ReaderConfig{
@@ -96,12 +110,8 @@ func NewClient(topic maasModel.TopicAddress, options ...ClientOptions) (*kafka.C
 		SASL: saslMechanism,
 	}
 	for _, opt := range options {
-		if opt.AlterTransport != nil {
-			if altered, aErr := opt.AlterTransport(transport); aErr != nil {
-				return nil, aErr
-			} else {
-				transport = altered
-			}
+		if transport, err = applyAlter(transport, "AlterTransport", opt.AlterTransport); err != nil {
+			return nil, err
 		}
 	}
 	return &kafka.Client{
@@ -202,6 +212,12 @@ func getAvailableData(props *maasModel.TopicConnectionProperties) ([]string, *tl
 
 type WriterOptions struct {
 	AlterTransport func(transport *kafka.Transport) (*kafka.Transport, error)
+	// RequiredAcks chooses how much of the cluster has to confirm a write. Left nil it
+	// stays at the kafka-go default, RequireNone: the writer never reads a broker
+	// response, so WriteMessages reports success for messages a partition leader change
+	// then drops. RequireOne makes that failure visible, RequireAll also survives the
+	// loss of the leader that acknowledged it. See "Write acknowledgements" in README.
+	RequiredAcks *kafka.RequiredAcks
 }
 
 type ReaderOptions struct {

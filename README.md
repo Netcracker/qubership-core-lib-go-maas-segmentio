@@ -18,6 +18,8 @@ The provided Writer and Reader will receive all required configuration regarding
       * [WatchTopicCreate example:](#watchtopiccreate-example)
       * [WatchTenantTopics example:](#watchtenanttopics-example)
     * [3. Customize underlying segmentio structs:](#3-customize-underlying-segmentio-structs)
+    * [4. Write acknowledgements (RequiredAcks)](#4-write-acknowledgements-requiredacks)
+    * [5. Behaviour on broker loss](#5-behaviour-on-broker-loss)
 <!-- TOC -->
 
 ### 1. Writer. To create kafka-go Write struct based on response from MaaS, the following code can be used:
@@ -25,6 +27,7 @@ The provided Writer and Reader will receive all required configuration regarding
   import (
 	"context"
 	"fmt"
+	"log"
 	"github.com/netcracker/qubership-core-lib-go/context-propagation/baseproviders"
 	"github.com/netcracker/qubership-core-lib-go/context-propagation/ctxmanager"
 	"github.com/netcracker/qubership-core-lib-go-maas-client/v3/classifier"
@@ -47,7 +50,10 @@ func producer() {
 		Value:   []byte("10USD"),
 		Headers: segmentioHelper.BuildHeaders(ctxData),
 	}
-	writer.WriteMessages(ctx, message)
+	// check the error: with acks enabled this is where a failed write surfaces
+	if err := writer.WriteMessages(ctx, message); err != nil {
+		log.Printf("failed to write message: %v", err)
+	}
 }
   ~~~
 
@@ -186,3 +192,58 @@ func clientWithOptions(topicAddress model.TopicAddress) {
 }
 ~~~
 
+
+### 4. Write acknowledgements (`RequiredAcks`)
+
+**A writer built without options keeps the kafka-go default, `RequireNone` (acks=0),
+and that default loses data during a leader change.** The writer never reads a broker
+response, so `WriteMessages` returns success for messages the old leader never
+committed and the new one never received. Nothing surfaces: not an error, not a
+retry, not a metric.
+
+Decide deliberately, at construction:
+
+~~~ go
+acks := kafkago.RequireOne
+writer, err := segmentioHelper.NewWriter(topicAddress,
+    segmentioHelper.WriterOptions{RequiredAcks: &acks})
+~~~
+
+| | What a write waits for | What a leader change costs |
+|---|---|---|
+| `RequireNone` | nothing | acknowledged messages are lost silently |
+| `RequireOne` | the leader's own log | a write that fails is visible, so it can be retried; a write acknowledged by a leader that then dies before a replica copied it is still lost |
+| `RequireAll` | every in-sync replica | nothing acknowledged is lost, with `min.insync.replicas` above 1 |
+
+`RequireAll` is the safe end and it is not free: it waits for the slowest in-sync
+replica, and it fails whenever the ISR drops below `min.insync.replicas` — which a
+rolling node replacement routinely causes. `RequireOne` is the usual middle ground.
+
+`RequireNone` is a legitimate choice for telemetry and metrics, where loss is
+acceptable and latency is not. It is the wrong choice for anything a reader is
+expected to reconcile against.
+
+The writer is also returned mutable, so `writer.RequiredAcks` can be assigned after
+the fact; the option exists so that a service building writers in a factory can make
+the choice in one place.
+
+
+### 5. Behaviour on broker loss
+
+A rolling node update takes brokers away one at a time, and the two sides of this
+library recover differently. Neither is recreated for you: keep using the same
+writer or reader.
+
+A writer whose partition leader disappears finds the new one on its own and loses
+nothing it acknowledged. Writes fail in between, so retry them: with `RequireOne`
+a failure means the message did not reach the log.
+
+A reader depends on the broker coordinating its group as well as on its partition
+leaders, since `NewReaderConfig` always builds a group reader. While the group is
+finding its new coordinator, `FetchMessage` and `CommitMessages` return errors;
+keep calling them and the reader rejoins on its own. Expect seconds rather than
+milliseconds, and expect most of that to be the cluster settling on a new
+coordinator rather than the reader reconnecting to it.
+
+Delivery is at least once: a message whose commit did not land is delivered again.
+Make the handler safe to run twice, or deduplicate by key.

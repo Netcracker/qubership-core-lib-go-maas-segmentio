@@ -3,7 +3,7 @@ module github.com/netcracker/qubership-core-lib-go-maas-segmentio/v3
 go 1.26.5
 
 require (
-	github.com/moby/moby/api v1.56.0
+	github.com/moby/moby/api v1.56.1
 	github.com/netcracker/qubership-core-lib-go-maas-client/v3 v3.7.0
 	github.com/segmentio/kafka-go v0.4.51
 	github.com/stretchr/testify v1.12.1
